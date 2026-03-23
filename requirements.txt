@@ -3,13 +3,11 @@ flask-socketio
 eventlet
 python-socketio
 requests
-<<<<<<< HEAD
 websocket-client
 PyQt6
 pyinstaller
 winotify
 setuptools
 gunicorn
-=======
-websocket-client
->>>>>>> 3f6e194f8caff1bb1dd635f1b2b9f1cdb5663d6e
+
+
