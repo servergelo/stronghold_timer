@@ -28,7 +28,7 @@ def clean_expired_timers():
 @socketio.on('connect')
 def handle_connect():
     print("Client connected")
-    clean_expired_timers()
+    # 🔥 send all active timers sa bagong client
     emit('current_timers', list(timers.values()))
 
 @socketio.on('start_timer')
