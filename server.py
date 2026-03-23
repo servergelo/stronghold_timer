@@ -33,7 +33,6 @@ def handle_connect():
                 'startedAt': timer_data['startedAt']
             })
     
-    if active_timers:
         emit('current_timers', active_timers)
         print(f"📤 Sent {len(active_timers)} active timers to new client")
 
