@@ -16,14 +16,12 @@ timers = {}
 def handle_connect():
     print(f"✅ Client connected: {request.sid if 'request' in dir() else 'unknown'}")
     
-    # Send all active timers to newly connected client
     active_timers = []
     current_time = int(time.time() * 1000)
     
     for timer_key, timer_data in timers.items():
         elapsed = (current_time - timer_data['startedAt']) // 1000
         
-        # Only send timers that haven't expired
         if elapsed < timer_data['duration']:
             active_timers.append({
                 'boss': timer_data['boss'],
@@ -33,8 +31,9 @@ def handle_connect():
                 'startedAt': timer_data['startedAt']
             })
     
-        emit('current_timers', active_timers)
-        print(f"📤 Sent {len(active_timers)} active timers to new client")
+    # 🔥 IMPORTANT: OUTSIDE LOOP
+    emit('current_timers', active_timers)
+    print(f"📤 Sent {len(active_timers)} active timers to new client")
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -74,7 +73,7 @@ def start_timer(data):
             'duration': duration,
             'startedAt': started_at
         }, broadcast=True)
-        
+    
     except Exception as e:
         print(f"❌ Error starting timer: {e}")
 
@@ -110,7 +109,7 @@ def reset_timer(data):
             **data,
             "reset": True
         }, broadcast=True)
-        
+    
     except Exception as e:
         print(f"❌ Error resetting timer: {e}")
 
@@ -135,7 +134,7 @@ def boss_up(data):
             'level': level,
             'channel': 'BOSS_UP'
         }, broadcast=True)
-        
+    
     except Exception as e:
         print(f"❌ Error broadcasting boss up: {e}")
 
