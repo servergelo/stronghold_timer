@@ -43,7 +43,7 @@ def start_timer(data):
 @socketio.on('reset_timer')
 def reset_timer(data):
     if not all(k in data for k in ['boss', 'level', 'channel']):
-    return
+        return
 
     timer_key = f"{data['boss']}_{data['level']}_{data['channel']}"
     if timer_key in timers:
