@@ -5,3 +5,4 @@ python-socketio
 requests
 websocket-client
 gunicorn
+flask-cors
