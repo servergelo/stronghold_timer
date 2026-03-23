@@ -4,10 +4,4 @@ eventlet
 python-socketio
 requests
 websocket-client
-PyQt6
-pyinstaller
-winotify
-setuptools
 gunicorn
-
-
