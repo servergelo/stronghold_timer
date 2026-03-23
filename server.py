@@ -18,12 +18,10 @@ def home():
 def clean_expired_timers():
     current_time = int(time.time() * 1000)
     expired_keys = []
-
     for key, timer in timers.items():
         elapsed = (current_time - timer['startedAt']) // 1000
         if elapsed >= timer['duration']:
             expired_keys.append(key)
-
     for key in expired_keys:
         del timers[key]
 
@@ -42,13 +40,26 @@ def start_timer(data):
 
 @socketio.on('reset_timer')
 def reset_timer(data):
-    if not all(k in data for k in ['boss', 'level', 'channel']):
-        return
-
-    timer_key = f"{data['boss']}_{data['level']}_{data['channel']}"
-    if timer_key in timers:
-        del timers[timer_key]
+    try:
+        # 🔥 GLOBAL RESET
+        if data.get("boss") == "ALL":
+            timers.clear()
+            print("GLOBAL RESET")
+            socketio.emit('timer_reset', {
+                "boss": "ALL",
+                "level": 0,
+                "channel": "ALL"
+            })
+            return
+        
+        # 🔥 SINGLE RESET
+        timer_key = f"{data['boss']}_{data['level']}_{data['channel']}"
+        if timer_key in timers:
+            del timers[timer_key]
+        print(f"Timer reset: {timer_key}")
         socketio.emit('timer_reset', data)
+    except Exception as e:
+        print(f"Error resetting timer: {e}")
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
