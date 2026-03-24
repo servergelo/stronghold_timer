@@ -83,7 +83,7 @@ def start_timer(data):
         }
         
         print(f"[BROADCAST] Sending to all clients\n")
-        socketio.emit('timer_started', broadcast_data, broadcast=True)
+        socketio.emit('timer_started', broadcast_data)
     
     except Exception as e:
         print(f"[ERROR] {e}\n")
@@ -105,7 +105,7 @@ def reset_timer(data):
             }
             
             print(f"[BROADCAST] Sending reset to all clients\n")
-            socketio.emit('timer_reset', broadcast_data, broadcast=True)
+            socketio.emit('timer_reset', broadcast_data)
             return
         
         timer_key = f"{data['boss']}_{data['level']}_{data['channel']}"
@@ -121,7 +121,7 @@ def reset_timer(data):
         }
         
         print(f"[BROADCAST] Sending reset to all clients\n")
-        socketio.emit('timer_reset', broadcast_data, broadcast=True)
+        socketio.emit('timer_reset', broadcast_data)
     
     except Exception as e:
         print(f"[ERROR] {e}\n")
@@ -162,7 +162,7 @@ def clear_all():
         'level': 'ALL',
         'channel': 'ALL',
         'reset': True
-    }, broadcast=True)
+    })
     return {'status': 'cleared', 'message': 'All timers cleared'}
 
 if __name__ == '__main__':
