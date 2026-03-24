@@ -3,10 +3,11 @@ from flask import Flask
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import time
+import threading
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # ================= TIMER STORAGE =================
 timers = {}
@@ -14,7 +15,8 @@ timers = {}
 # ================= SOCKET.IO EVENTS =================
 @socketio.on('connect')
 def handle_connect():
-    print(f"✅ Client connected: {request.sid if 'request' in dir() else 'unknown'}")
+    client_id = request.sid
+    print(f"✅ Client connected: {client_id}")
     
     active_timers = []
     current_time = int(time.time() * 1000)
@@ -22,6 +24,7 @@ def handle_connect():
     for timer_key, timer_data in timers.items():
         elapsed = (current_time - timer_data['startedAt']) // 1000
         
+        # Only send timers that haven't expired
         if elapsed < timer_data['duration']:
             active_timers.append({
                 'boss': timer_data['boss'],
@@ -31,18 +34,19 @@ def handle_connect():
                 'startedAt': timer_data['startedAt']
             })
     
-    # 🔥 IMPORTANT: OUTSIDE LOOP
+    # 🔥 EMIT TO THIS CLIENT ONLY (not broadcast)
     emit('current_timers', active_timers)
-    print(f"📤 Sent {len(active_timers)} active timers to new client")
+    print(f"📤 Sent {len(active_timers)} active timers to client {client_id}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print(f"❌ Client disconnected: {request.sid if 'request' in dir() else 'unknown'}")
+    client_id = request.sid
+    print(f"❌ Client disconnected: {client_id}")
 
 @socketio.on('start_timer')
 def start_timer(data):
     try:
-        print(f"🚀 Timer started: {data}")
+        print(f"\n🚀 Timer started: {data}")
         
         boss = data.get('boss')
         level = data.get('level')
@@ -63,9 +67,9 @@ def start_timer(data):
         }
         
         print(f"💾 Stored timer: {timer_key}")
-        print(f"📊 Total active timers: {len(timers)}")
+        print(f"📊 Total active timers: {len(timers)}\n")
         
-        # Broadcast to all clients
+        # 🔥 BROADCAST TO ALL CLIENTS
         socketio.emit('timer_started', {
             'boss': boss,
             'level': level,
@@ -73,25 +77,31 @@ def start_timer(data):
             'duration': duration,
             'startedAt': started_at
         }, broadcast=True)
+        
+        print(f"📡 Broadcasted timer_started event\n")
     
     except Exception as e:
-        print(f"❌ Error starting timer: {e}")
+        print(f"❌ Error starting timer: {e}\n")
 
 @socketio.on('reset_timer')
 def reset_timer(data):
     try:
-        print("🔄 RESET RECEIVED:", data)
+        print(f"\n🔄 RESET RECEIVED: {data}")
         
         # 🔥 HANDLE BROADCAST RESET (ALL)
         if data.get('boss') == 'ALL':
             print("🔄 CLEARING ALL TIMERS")
             timers.clear()
-            # Broadcast reset to all clients with reset flag
+            
+            # 🔥 BROADCAST RESET TO ALL CLIENTS
             socketio.emit('timer_reset', {
-                **data,
-                "reset": True
+                'boss': 'ALL',
+                'level': 'ALL',
+                'channel': 'ALL',
+                'reset': True
             }, broadcast=True)
-            print(f"✅ All timers cleared. Total timers: {len(timers)}")
+            
+            print(f"✅ All timers cleared. Total timers: {len(timers)}\n")
             return
         
         # 🔥 HANDLE SPECIFIC TIMER RESET
@@ -100,23 +110,53 @@ def reset_timer(data):
         if timer_key in timers:
             del timers[timer_key]
             print(f"✅ Deleted timer: {timer_key}")
-            print(f"📊 Remaining timers: {len(timers)}")
         else:
             print(f"⚠️ Timer not found: {timer_key}")
         
-        # 🔥 BROADCAST RESET TO ALL CLIENTS with reset flag
+        print(f"📊 Remaining timers: {len(timers)}")
+        
+        # 🔥 BROADCAST RESET TO ALL CLIENTS
         socketio.emit('timer_reset', {
-            **data,
-            "reset": True
+            'boss': data.get('boss'),
+            'level': data.get('level'),
+            'channel': data.get('channel'),
+            'reset': True
         }, broadcast=True)
+        
+        print(f"📡 Broadcasted timer_reset event\n")
     
     except Exception as e:
-        print(f"❌ Error resetting timer: {e}")
+        print(f"❌ Error resetting timer: {e}\n")
+
+@socketio.on('request_sync')
+def request_sync():
+    """Manual sync request from client"""
+    client_id = request.sid
+    print(f"\n🔄 MANUAL SYNC REQUESTED by {client_id}")
+    
+    active_timers = []
+    current_time = int(time.time() * 1000)
+    
+    for timer_key, timer_data in timers.items():
+        elapsed = (current_time - timer_data['startedAt']) // 1000
+        
+        if elapsed < timer_data['duration']:
+            active_timers.append({
+                'boss': timer_data['boss'],
+                'level': timer_data['level'],
+                'channel': timer_data['channel'],
+                'duration': timer_data['duration'],
+                'startedAt': timer_data['startedAt']
+            })
+    
+    # 🔥 SEND TO THIS CLIENT ONLY
+    emit('current_timers', active_timers)
+    print(f"📤 Sent {len(active_timers)} timers to client {client_id} (manual sync)\n")
 
 @socketio.on('boss_up')
 def boss_up(data):
     try:
-        print(f"🎉 BOSS UP: {data}")
+        print(f"\n🎉 BOSS UP: {data}")
         
         boss = data.get('boss')
         level = data.get('level')
@@ -128,15 +168,17 @@ def boss_up(data):
             del timers[timer_key]
             print(f"💾 Removed timer: {timer_key}")
         
-        # Broadcast to all clients
+        # 🔥 BROADCAST TO ALL CLIENTS
         socketio.emit('timer_started', {
             'boss': boss,
             'level': level,
             'channel': 'BOSS_UP'
         }, broadcast=True)
+        
+        print(f"📡 Broadcasted boss_up event\n")
     
     except Exception as e:
-        print(f"❌ Error broadcasting boss up: {e}")
+        print(f"❌ Error broadcasting boss up: {e}\n")
 
 # ================= CLEANUP OLD TIMERS =================
 def cleanup_expired_timers():
@@ -211,12 +253,13 @@ def clear_all():
 
 # ================= RUN SERVER =================
 if __name__ == '__main__':
-    print("=" * 50)
-    print("🚀 STRONGHOLD BOSS TIMER SERVER")
-    print("=" * 50)
+    print("=" * 60)
+    print("🚀 STRONGHOLD BOSS TIMER SERVER v1.0.0")
+    print("=" * 60)
     print("📡 Starting Socket.IO server...")
     print("🌐 CORS enabled for all origins")
-    print("=" * 50)
+    print("🔗 Listening on 0.0.0.0:10000")
+    print("=" * 60 + "\n")
     
     # Run with production settings for Render
     socketio.run(
