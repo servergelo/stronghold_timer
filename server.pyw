@@ -1,10 +1,3 @@
-import sys
-import os
-import logging
-from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
-from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import QThread, pyqtSignal
-import webbrowser
 from gevent import monkey
 monkey.patch_all()
 
@@ -12,15 +5,14 @@ from flask import Flask, render_template_string, jsonify, request
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 from datetime import datetime, timedelta
-import time
 import json
-import threading
+import os
+from time import time
+import logging
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [%(levelname)s] %(message)s')
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ===== FLASK APP SETUP =====
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
@@ -61,7 +53,7 @@ def handle_connect():
     print(f"\n[CONNECT] Client connected: {client_id}")
     
     active_timers = []
-    current_time = int(time.time() * 1000)
+    current_time = int(time() * 1000)
     
     for timer_key, timer_data in timers.items():
         elapsed = (current_time - timer_data['startedAt']) // 1000
@@ -90,7 +82,7 @@ def start_timer(data):
         level = data.get('level')
         channel = data.get('channel')
         duration = data.get('duration')
-        started_at = data.get('startedAt', int(time.time() * 1000))
+        started_at = data.get('startedAt', int(time() * 1000))
         
         if not all([boss, level, channel, duration]):
             print(f"[ERROR] Missing fields")
@@ -180,19 +172,17 @@ def timer_completed(data):
     except Exception as e:
         print(f"[ERROR] {e}\n")
 
-# ===== REST API ENDPOINTS =====
-
 @app.route('/server-time', methods=['GET'])
 def get_server_time():
     return jsonify({
-        'timestamp': int(time.time() * 1000),
+        'timestamp': int(time() * 1000),
         'datetime': datetime.now().isoformat()
     })
 
 @app.route('/timers', methods=['GET'])
 def get_timers():
     active_timers = []
-    current_time = int(time.time() * 1000)
+    current_time = int(time() * 1000)
     
     for timer_key, timer_data in timers.items():
         elapsed = (current_time - timer_data['startedAt']) // 1000
@@ -720,136 +710,12 @@ def serve_dashboard():
     </html>
     """
 
-# ===== PYQT6 TRAY APP =====
-
-class ServerThread(QThread):
-    status_changed = pyqtSignal(str)
-    error_occurred = pyqtSignal(str)
-    
-    def __init__(self, port):
-        super().__init__()
-        self.port = port
-        self.daemon = True
-    
-    def run(self):
-        try:
-            logger.info(f"Starting server on port {self.port}")
-            self.status_changed.emit(f"Starting on port {self.port}...")
-            
-            print(f"\n{'='*60}")
-            print("STRONGHOLD BOSS TIMER SERVER v1.0.0")
-            print(f"{'='*60}")
-            print(f"Starting on 0.0.0.0:{self.port}")
-            print(f"\n🌐 Web Dashboard: http://localhost:{self.port}")
-            print(f"{'='*60}\n")
-            
-            self.status_changed.emit(f"Running on port {self.port}")
-            socketio.run(app, host='0.0.0.0', port=self.port, debug=False, allow_unsafe_werkzeug=True)
-        
-        except Exception as e:
-            logger.error(f"Server error: {e}")
-            self.error_occurred.emit(str(e))
-            self.status_changed.emit(f"Error: {e}")
-
-def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except AttributeError:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
-class ServerTrayApp:
-    def __init__(self):
-        try:
-            self.port = int(os.environ.get('PORT', 10000))
-        except ValueError:
-            logger.error("Invalid PORT value")
-            raise ValueError("PORT must be an integer")
-        
-        self.app = QApplication(sys.argv)
-        self.app.setQuitOnLastWindowClosed(False)
-        
-        if not QSystemTrayIcon.isSystemTrayAvailable():
-            logger.error("System tray not available")
-            QMessageBox.critical(None, "Error", "System tray not available on this system.")
-            sys.exit(1)
-        
-        self.tray = QSystemTrayIcon()
-        self._set_icon()
-        self.tray.setToolTip("Stronghold Boss Timer Server")
-        
-        menu = QMenu()
-        
-        self.status_action = menu.addAction("Status: Starting...")
-        self.status_action.setEnabled(False)
-        
-        menu.addSeparator()
-        
-        dashboard_action = menu.addAction("🌐 Open Dashboard")
-        dashboard_action.triggered.connect(self.open_dashboard)
-        
-        menu.addSeparator()
-        
-        exit_action = menu.addAction("❌ Exit Server")
-        exit_action.triggered.connect(self.quit_app)
-        
-        self.tray.setContextMenu(menu)
-        self.tray.show()
-        
-        self.server_thread = ServerThread(self.port)
-        self.server_thread.status_changed.connect(self.update_status)
-        self.server_thread.error_occurred.connect(self.on_error)
-        self.server_thread.start()
-        
-        self.tray.showMessage(
-            "Server Started",
-            f"Stronghold Boss Timer Server is running on port {self.port}!",
-            QSystemTrayIcon.MessageIcon.Information,
-            5000
-        )
-        
-        logger.info(f"Tray app initialized on port {self.port}")
-    
-    def _set_icon(self):
-        icon_path = resource_path("2icon.ico")
-        if os.path.exists(icon_path):
-            self.tray.setIcon(QIcon(icon_path))
-            logger.info(f"Loaded icon from {icon_path}")
-        else:
-            logger.warning(f"Icon not found at {icon_path}, using default")
-    
-    def update_status(self, status):
-        self.status_action.setText(f"Status: {status}")
-    
-    def on_error(self, error_msg):
-        logger.error(f"Server error: {error_msg}")
-        self.tray.showMessage(
-            "Server Error",
-            error_msg,
-            QSystemTrayIcon.MessageIcon.Critical,
-            5000
-        )
-    
-    def open_dashboard(self):
-        url = f"http://localhost:{self.port}"
-        logger.info(f"Opening dashboard at {url}")
-        webbrowser.open(url)
-    
-    def quit_app(self):
-        logger.info("Shutting down server...")
-        self.tray.showMessage(
-            "Shutdown",
-            "Server shutting down...",
-            QSystemTrayIcon.MessageIcon.Information,
-            3000
-        )
-        self.server_thread.quit()
-        self.server_thread.wait(timeout=5000)
-        self.tray.hide()
-        self.app.quit()
-        sys.exit(0)
-
 if __name__ == '__main__':
-    logger.info("Stronghold Boss Timer Tray App Starting")
-    tray_app = ServerTrayApp()
-    sys.exit(tray_app.app.exec())
+    port = int(os.environ.get('PORT', 10000))
+    print("\n" + "=" * 60)
+    print("STRONGHOLD BOSS TIMER SERVER v1.0.0")
+    print("=" * 60)
+    print(f"Starting on 0.0.0.0:{port}")
+    print(f"\n🌐 Web Dashboard: http://localhost:{port}")
+    print("=" * 60 + "\n")
+    socketio.run(app, host='0.0.0.0', port=port, debug=False)
